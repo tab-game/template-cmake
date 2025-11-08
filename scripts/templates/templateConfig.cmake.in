@@ -1,0 +1,17 @@
+# Module path
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/modules)
+
+# Depend packages
+@_tab_game_FIND_ZLIB@
+@_tab_game_FIND_PROTOBUF@
+@_tab_game_FIND_SSL@
+@_tab_game_FIND_CARES@
+@_tab_game_FIND_ABSL@
+@_tab_game_FIND_RE2@
+@_tab_game_FIND_OPENTELEMETRY@
+
+# Targets
+include(${CMAKE_CURRENT_LIST_DIR}/tab_gameTargets.cmake)
+if(NOT CMAKE_CROSSCOMPILING)
+  include(${CMAKE_CURRENT_LIST_DIR}/tab_gamePluginTargets.cmake)
+endif()
