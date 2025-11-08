@@ -18,42 +18,9 @@ from utils import (
     rename_file,
     ensure_directory,
     validate_project_name,
+    get_user_input,
 )
 from step_executor import StepExecutor
-
-
-def get_user_input(prompt: str, default: str = "", validator=None) -> str:
-  """获取用户输入
-
-  Args:
-    prompt: 提示信息
-    default: 默认值
-    validator: 验证函数，返回 (是否有效, 错误信息)
-
-  Returns:
-    用户输入的值
-  """
-  while True:
-    if default:
-      full_prompt = f"{prompt} [{default}]: "
-    else:
-      full_prompt = f"{prompt}: "
-
-    user_input = input(full_prompt).strip()
-
-    if not user_input:
-      if default:
-        return default
-      print("输入不能为空，请重新输入")
-      continue
-
-    if validator:
-      is_valid, error_msg = validator(user_input)
-      if not is_valid:
-        print(f"输入无效: {error_msg}")
-        continue
-
-    return user_input
 
 
 def step_copy_project_cmake(context: Dict[str, Any]) -> bool:
