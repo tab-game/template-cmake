@@ -2,10 +2,11 @@ cmake_minimum_required(VERSION 3.20)
 
 set(PACKAGE_NAME "tab_game")
 
-set(PACKAGE_VERSION "0.0.1")
 set(PACKAGE_VERSION_MAJOR 0)
-set(PACKAGE_VERSION_MINOR 0)
-set(PACKAGE_VERSION_PATCH 1)
+set(PACKAGE_VERSION_MINOR 1)
+set(PACKAGE_VERSION_PATCH 0)
+set(PACKAGE_VERSION "${PACKAGE_VERSION_MAJOR}.${PACKAGE_VERSION_MINOR}.${PACKAGE_VERSION_PATCH}")
+set(PACKAGE_SOVERSION "${PACKAGE_VERSION_MAJOR}.${PACKAGE_VERSION_MINOR}")
 set(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
 set(PACKAGE_TARNAME "${PACKAGE_NAME}-${PACKAGE_VERSION}")
 
@@ -101,35 +102,32 @@ if(WIN32)
   set(_tab_game_STATIC_WIN32 STATIC)
 endif()
 
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/CMakeLists.txt)
   set(tab_game_THIRD_PARTY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
   add_subdirectory(${tab_game_THIRD_PARTY_DIR} EXCLUDE_FROM_ALL)
 endif()
 
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/CMakeLists.txt)
   set(tab_game_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
   add_subdirectory(${tab_game_SRC_DIR})
 endif()
 
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt)
   set(tab_game_TESTS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tests)
   add_subdirectory(${tab_game_TESTS_DIR})
 endif()
 
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/docs)
-  set(tab_game_DOCS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/docs)
-  add_subdirectory(${tab_game_DOCS_DIR})
-endif()
-
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/examples)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/examples/CMakeLists.txt)
   set(tab_game_EXAMPLES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/examples)
   add_subdirectory(${tab_game_EXAMPLES_DIR})
 endif()
 
+# @add_lib_placeholder@
+
 if(tab_game_INSTALL)
   install(EXPORT tab_gameTargets
     DESTINATION ${tab_game_INSTALL_CMAKEDIR}
-    NAMESPACE tab_game::
+    NAMESPACE tab::
   )
 endif()
 
@@ -138,7 +136,7 @@ include(CMakePackageConfigHelpers)
 configure_file(cmake/tab_gameConfig.cmake.in
   tab_gameConfig.cmake @ONLY)
 write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/tab_gameConfigVersion.cmake
-  VERSION ${tab_game_CPP_VERSION}
+  VERSION ${PACKAGE_VERSION}
   COMPATIBILITY AnyNewerVersion)
 install(FILES
     ${CMAKE_CURRENT_BINARY_DIR}/tab_gameConfig.cmake
