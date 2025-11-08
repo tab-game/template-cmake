@@ -3,9 +3,12 @@
 提供文件操作、字符串替换等可复用的工具函数。
 """
 import os
+import re
 import shutil
+import platform
+import subprocess
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Callable
 
 
 def copy_file(src: str, dst: str, overwrite: bool = False) -> bool:
@@ -187,4 +190,114 @@ def validate_project_name(name: str) -> Tuple[bool, Optional[str]]:
     return False, "工程名称不能以数字开头"
 
   return True, None
+
+
+def get_user_input(prompt: str, default: str = "", validator: Optional[Callable] = None) -> str:
+  """获取用户输入
+
+  Args:
+    prompt: 提示信息
+    default: 默认值
+    validator: 验证函数，返回 (是否有效, 错误信息)
+
+  Returns:
+    用户输入的值
+  """
+  while True:
+    if default:
+      full_prompt = f"{prompt} [{default}]: "
+    else:
+      full_prompt = f"{prompt}: "
+
+    user_input = input(full_prompt).strip()
+
+    if not user_input:
+      if default:
+        return default
+      print("输入不能为空，请重新输入")
+      continue
+
+    if validator:
+      is_valid, error_msg = validator(user_input)
+      if not is_valid:
+        print(f"输入无效: {error_msg}")
+        continue
+
+    return user_input
+
+
+def get_project_name(project_root: str) -> Optional[str]:
+  """从 CMakeLists.txt 中提取工程名称
+
+  Args:
+    project_root: 项目根目录
+
+  Returns:
+    工程名称，如果未找到返回 None
+  """
+  cmake_lists = Path(project_root) / "CMakeLists.txt"
+  if not cmake_lists.exists():
+    return None
+
+  try:
+    content = cmake_lists.read_text(encoding='utf-8')
+    # 查找 set(PACKAGE_NAME "...")
+    match = re.search(r'set\s*\(\s*PACKAGE_NAME\s+"([^"]+)"\s*\)', content)
+    if match:
+      return match.group(1)
+    return None
+  except Exception as e:
+    print(f"读取 CMakeLists.txt 失败: {e}")
+    return None
+
+
+def copy_to_clipboard(text: str) -> bool:
+  """复制文本到剪贴板
+
+  Args:
+    text: 要复制的文本
+
+  Returns:
+    成功返回 True，失败返回 False
+  """
+  try:
+    # 尝试使用 pyperclip
+    try:
+      import pyperclip
+      pyperclip.copy(text)
+      return True
+    except ImportError:
+      pass
+
+    # 回退到系统命令
+    system = platform.system()
+    if system == "Darwin":  # macOS
+      process = subprocess.Popen(['pbcopy'], stdin=subprocess.PIPE)
+      process.communicate(text.encode('utf-8'))
+      return process.returncode == 0
+    elif system == "Linux":
+      # 尝试 xclip
+      try:
+        process = subprocess.Popen(['xclip', '-selection', 'clipboard'], stdin=subprocess.PIPE)
+        process.communicate(text.encode('utf-8'))
+        if process.returncode == 0:
+          return True
+      except FileNotFoundError:
+        pass
+      # 尝试 xsel
+      try:
+        process = subprocess.Popen(['xsel', '--clipboard', '--input'], stdin=subprocess.PIPE)
+        process.communicate(text.encode('utf-8'))
+        return process.returncode == 0
+      except FileNotFoundError:
+        pass
+    elif system == "Windows":
+      process = subprocess.Popen(['clip'], stdin=subprocess.PIPE, shell=True)
+      process.communicate(text.encode('utf-8'))
+      return process.returncode == 0
+
+    return False
+  except Exception as e:
+    print(f"复制到剪贴板失败: {e}")
+    return False
 
