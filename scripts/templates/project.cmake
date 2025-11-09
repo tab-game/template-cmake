@@ -93,9 +93,9 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # 包含自定义CMake模块（优先于系统模块）
-list(INSERT CMAKE_MODULE_PATH 0 ${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules)
+list(INSERT CMAKE_MODULE_PATH 0 ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 # 如果需要系统模块优先，使用下面这行
-# list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
+# list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 if(WIN32)
   set(_tab_game_ALLTARGETS_LIBRARIES ${_tab_game_ALLTARGETS_LIBRARIES} ws2_32 crypt32)
@@ -112,7 +112,18 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/CMakeLists.txt)
   add_subdirectory(${tab_game_SRC_DIR})
 endif()
 
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt)
+# 启用测试（必须在 add_subdirectory 之前调用）
+if(tab_game_BUILD_TESTS AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt)
+  enable_testing()
+  # 使用 gtest 库（支持三种获取方式）
+  # 方式1: 如果 third_party/gtest 目录存在且有 CMakeLists.txt，则使用 add_subdirectory
+  # 方式2: 尝试通过 find_package 查找已安装的 gtest
+  # 方式3: 使用 FetchContent 下载 gtest 到 CMAKE_BINARY_DIR
+  # 取消下面的注释以启用 gtest
+  include(find_gtest)
+  find_or_fetch_gtest()
+  # 或者指定版本和仓库：
+  # find_or_fetch_gtest(VERSION 1.14.0 GIT_TAG v1.14.0)
   set(tab_game_TESTS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tests)
   add_subdirectory(${tab_game_TESTS_DIR})
 endif()
