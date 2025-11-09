@@ -26,6 +26,7 @@ from component_registry import (
     load_component_config_template,
     get_component_example_files,
     get_component_example_destination,
+    get_component_cmake_files,
     Component,
 )
 
@@ -309,6 +310,57 @@ def step_replace_component_placeholders(context: Dict[str, Any]) -> bool:
   return True
 
 
+def step_copy_component_cmake_files(context: Dict[str, Any]) -> bool:
+  """步骤：复制组件 cmake 文件
+
+  Args:
+    context: 执行上下文
+
+  Returns:
+    成功返回 True，失败返回 False
+  """
+  script_dir = Path(__file__).parent
+  components_dir = script_dir / 'templates' / 'components'
+  project_root = context.get('project_root')
+  selected_components = context.get('selected_components', {})
+  
+  if not selected_components:
+    return True
+  
+  # 确保项目的 cmake 目录存在
+  cmake_dir = os.path.join(project_root, 'cmake')
+  ensure_directory(cmake_dir)
+  
+  # 发现所有组件
+  components = discover_components(components_dir)
+  component_map = {comp.name: comp for comp in components}
+  
+  for component_name, component_info in selected_components.items():
+    if not component_info.get('selected', False):
+      continue
+    
+    if component_name not in component_map:
+      continue
+    
+    component = component_map[component_name]
+    
+    # 获取组件的 cmake 文件
+    cmake_files = get_component_cmake_files(component)
+    if not cmake_files:
+      continue
+    
+    # 复制 cmake 文件到项目的 cmake 目录
+    for src_file in cmake_files:
+      dest_file = os.path.join(cmake_dir, src_file.name)
+      if copy_file(str(src_file), dest_file, overwrite=True):
+        print(f"已复制 cmake 文件: {src_file.name} -> {dest_file}")
+      else:
+        print(f"警告: 无法复制 cmake 文件: {src_file.name}")
+        return False
+  
+  return True
+
+
 def step_copy_component_examples(context: Dict[str, Any]) -> bool:
   """步骤：复制组件示例文件
 
@@ -498,6 +550,10 @@ def main():
       name="替换组件占位符",
       func=step_replace_component_placeholders,
       description="替换 CMakeLists.txt 中的组件占位符",
+  ).register_step(
+      name="复制组件 cmake 文件",
+      func=step_copy_component_cmake_files,
+      description="将选中组件的 cmake 文件复制到项目的 cmake/ 目录",
   ).register_step(
       name="复制组件示例",
       func=step_copy_component_examples,

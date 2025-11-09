@@ -129,3 +129,27 @@ def get_component_example_destination(component: Component, project_root: str) -
   
   return os.path.join(project_root, 'examples', component.name, component.example_name)
 
+
+def get_component_cmake_files(component: Component) -> List[Path]:
+  """获取组件的 cmake 文件列表
+  
+  Args:
+    component: 组件对象
+    
+  Returns:
+    cmake 文件路径列表（排除 config.cmake.in）
+  """
+  if not component.component_dir.exists():
+    return []
+  
+  cmake_files = []
+  for file_path in component.component_dir.iterdir():
+    if not file_path.is_file():
+      continue
+    
+    # 只处理 .cmake 文件，排除 config.cmake.in
+    if file_path.suffix == '.cmake' and file_path.name != 'config.cmake.in':
+      cmake_files.append(file_path)
+  
+  return cmake_files
+
