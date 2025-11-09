@@ -345,6 +345,53 @@ def step_replace_component_placeholders(context: Dict[str, Any]) -> bool:
   return True
 
 
+def step_replace_library_execute_placeholders(context: Dict[str, Any]) -> bool:
+  """步骤：替换 library 和 execute 占位符
+
+  Args:
+    context: 执行上下文
+
+  Returns:
+    成功返回 True，失败返回 False
+  """
+  project_root = context.get('project_root')
+  
+  cmake_lists_file = os.path.join(project_root, 'CMakeLists.txt')
+  
+  if not os.path.exists(cmake_lists_file):
+    print(f"错误: CMakeLists.txt 不存在: {cmake_lists_file}")
+    return False
+  
+  # 读取文件内容
+  with open(cmake_lists_file, 'r', encoding='utf-8') as f:
+    content = f.read()
+  
+  # 替换 library 占位符（替换后保留占位符供后续追加）
+  library_cmake_code = context.get('library_cmake_code', '')
+  if library_cmake_code:
+    # 在占位符位置插入代码，但保留占位符
+    content = content.replace('# @add_library_placeholder@', library_cmake_code + '# @add_library_placeholder@')
+  else:
+    # 如果没有 library 代码，保留占位符
+    content = content.replace('# @add_library_placeholder@', '# @add_library_placeholder@')
+  
+  # 替换 execute 占位符（替换后保留占位符供后续追加）
+  execute_cmake_code = context.get('execute_cmake_code', '')
+  if execute_cmake_code:
+    # 在占位符位置插入代码，但保留占位符
+    content = content.replace('# @add_execute_placeholder@', execute_cmake_code + '# @add_execute_placeholder@')
+  else:
+    # 如果没有 execute 代码，保留占位符
+    content = content.replace('# @add_execute_placeholder@', '# @add_execute_placeholder@')
+  
+  # 写回文件
+  with open(cmake_lists_file, 'w', encoding='utf-8') as f:
+    f.write(content)
+  
+  print(f"已替换 library 和 execute 占位符: {cmake_lists_file}")
+  return True
+
+
 def step_copy_component_cmake_files(context: Dict[str, Any]) -> bool:
   """步骤：复制组件 cmake 文件
 
@@ -356,15 +403,28 @@ def step_copy_component_cmake_files(context: Dict[str, Any]) -> bool:
   """
   script_dir = Path(__file__).parent
   components_dir = script_dir / 'templates' / 'components'
+  templates_dir = context.get('templates_dir')
   project_root = context.get('project_root')
   selected_components = context.get('selected_components', {})
-  
-  if not selected_components:
-    return True
   
   # 确保项目的 cmake 目录存在
   cmake_dir = os.path.join(project_root, 'cmake')
   ensure_directory(cmake_dir)
+  
+  # 复制基础函数文件（总是复制，不依赖组件选择）
+  base_cmake_files = ['add_project_library.cmake', 'add_project_executable.cmake']
+  for cmake_file in base_cmake_files:
+    src_file = os.path.join(templates_dir, cmake_file)
+    if os.path.exists(src_file):
+      dest_file = os.path.join(cmake_dir, cmake_file)
+      if copy_file(src_file, dest_file, overwrite=True):
+        print(f"已复制基础 cmake 文件: {cmake_file} -> {dest_file}")
+      else:
+        print(f"警告: 无法复制基础 cmake 文件: {cmake_file}")
+        return False
+  
+  if not selected_components:
+    return True
   
   # 发现所有组件
   components = discover_components(components_dir)
@@ -515,6 +575,177 @@ def step_copy_component_examples(context: Dict[str, Any]) -> bool:
   return True
 
 
+def step_create_default_library(context: Dict[str, Any]) -> bool:
+  """步骤：创建默认 library 文件
+
+  Args:
+    context: 执行上下文
+
+  Returns:
+    成功返回 True，失败返回 False
+  """
+  project_root = context.get('project_root')
+  library_name = context.get('default_library_name')
+  templates_dir = context.get('templates_dir')
+  
+  if not library_name:
+    return True  # 没有选择添加 library，跳过
+  
+  # 将库名转换为不同格式
+  libname_lower = library_name.lower()
+  libname_upper = library_name.upper()
+  # 将库名转换为类名（首字母大写，其他保持原样）
+  libname_class = library_name[0].upper() + library_name[1:] if library_name else library_name
+  
+  # 读取模板文件
+  header_template = Path(templates_dir) / 'library_header.h.in'
+  source_template = Path(templates_dir) / 'library_source.cc.in'
+  
+  if not header_template.exists() or not source_template.exists():
+    print(f"错误: 模板文件不存在")
+    return False
+  
+  try:
+    # 读取模板内容
+    header_content = header_template.read_text(encoding='utf-8')
+    source_content = source_template.read_text(encoding='utf-8')
+    
+    # 替换占位符
+    replacements = {
+      '@libname@': libname_lower,
+      '@LibName@': libname_class,
+      '@LIBNAME_UPPER@': libname_upper
+    }
+    
+    for placeholder, value in replacements.items():
+      header_content = header_content.replace(placeholder, value)
+      source_content = source_content.replace(placeholder, value)
+    
+    # 创建目标文件
+    header_file = Path(project_root) / 'include' / libname_lower / f'{libname_lower}.h'
+    source_file = Path(project_root) / 'src' / libname_lower / f'{libname_lower}.cc'
+    
+    # 确保目录存在
+    header_file.parent.mkdir(parents=True, exist_ok=True)
+    source_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    # 写入文件
+    header_file.write_text(header_content, encoding='utf-8')
+    source_file.write_text(source_content, encoding='utf-8')
+    
+    print(f"已创建 library 文件:")
+    print(f"  - {header_file}")
+    print(f"  - {source_file}")
+    
+    # 创建 src/libname/CMakeLists.txt，使用 add_project_library
+    project_name = context.get('project_name')
+    lib_cmake_file = Path(project_root) / 'src' / libname_lower / 'CMakeLists.txt'
+    lib_cmake_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    # 生成 CMakeLists.txt 内容
+    # 源文件路径相对于 src/libname 目录
+    source_relative = f'{libname_lower}.cc'
+    # 头文件路径相对于项目根目录，直接使用 include/ 开头的相对路径
+    header_relative = f'include/{libname_lower}/{libname_lower}.h'
+    
+    cmake_content = f'''# {libname_class} 库
+include(add_project_library)
+
+add_project_library(
+  NAME {libname_lower}
+  SOURCES 
+    ${{CMAKE_CURRENT_SOURCE_DIR}}/{source_relative}
+  INSTALL_HEADERS 
+    {header_relative}
+)
+'''
+    
+    lib_cmake_file.write_text(cmake_content, encoding='utf-8')
+    print(f"  - {lib_cmake_file}")
+    
+    # 生成添加到根目录 CMakeLists.txt 的代码
+    lib_subdir_code = f'\n# {libname_class} 库\n'
+    lib_subdir_code += f'if(EXISTS ${{CMAKE_CURRENT_SOURCE_DIR}}/src/{libname_lower}/CMakeLists.txt)\n'
+    lib_subdir_code += f'  add_subdirectory(src/{libname_lower})\n'
+    lib_subdir_code += 'endif()\n'
+    
+    # 保存到 context 中，供后续步骤使用
+    if 'library_cmake_code' not in context:
+      context['library_cmake_code'] = ''
+    context['library_cmake_code'] += lib_subdir_code
+    
+    return True
+  except Exception as e:
+    print(f"创建 library 文件失败: {e}")
+    return False
+
+
+def step_create_default_execute(context: Dict[str, Any]) -> bool:
+  """步骤：创建默认 execute 文件
+
+  Args:
+    context: 执行上下文
+
+  Returns:
+    成功返回 True，失败返回 False
+  """
+  project_root = context.get('project_root')
+  execute_name = context.get('default_execute_name')
+  templates_dir = context.get('templates_dir')
+  
+  if not execute_name:
+    return True  # 没有选择添加 execute，跳过
+  
+  # 读取模板文件
+  main_template = Path(templates_dir) / 'execute_main.cc.in'
+  
+  if not main_template.exists():
+    print(f"错误: 模板文件不存在")
+    return False
+  
+  try:
+    # 读取模板内容
+    main_content = main_template.read_text(encoding='utf-8')
+    
+    # 替换占位符
+    main_content = main_content.replace('@exename@', execute_name)
+    
+    # 创建目标文件
+    main_file = Path(project_root) / 'src' / 'main.cc'
+    
+    # 确保目录存在
+    main_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    # 写入文件
+    main_file.write_text(main_content, encoding='utf-8')
+    
+    print(f"已创建 execute 文件:")
+    print(f"  - {main_file}")
+    
+    # 生成添加到根目录 CMakeLists.txt 的代码
+    project_name = context.get('project_name')
+    main_relative = 'src/main.cc'
+    
+    execute_cmake_code = f'\n# {execute_name} 可执行程序\n'
+    execute_cmake_code += f'include(add_project_executable)\n'
+    execute_cmake_code += f'\n'
+    execute_cmake_code += f'add_project_executable(\n'
+    execute_cmake_code += f'  NAME {execute_name}\n'
+    execute_cmake_code += f'  SOURCES \n'
+    execute_cmake_code += f'    ${{CMAKE_SOURCE_DIR}}/{main_relative}\n'
+    execute_cmake_code += f')\n'
+    
+    # 保存到 context 中，供后续步骤使用
+    if 'execute_cmake_code' not in context:
+      context['execute_cmake_code'] = ''
+    context['execute_cmake_code'] += execute_cmake_code
+    
+    return True
+  except Exception as e:
+    print(f"创建 execute 文件失败: {e}")
+    return False
+
+
 def validator_project_root(context: Dict[str, Any]) -> Tuple[bool, str]:
   """验证项目根目录
 
@@ -595,6 +826,30 @@ def main():
   available_components = discover_components(components_dir)
   selected_components = interactive_component_selection(available_components)
 
+  # 询问是否添加默认 library
+  default_library_name = None
+  add_library_choice = get_user_input(
+      "是否添加默认 library？",
+      "n"
+  )
+  if add_library_choice.lower() in ['y', 'yes', '是', '1']:
+    default_library_name = get_user_input(
+        "请输入库名称",
+        validator=lambda x: validate_project_name(x)
+    )
+
+  # 询问是否添加默认 execute
+  default_execute_name = None
+  add_execute_choice = get_user_input(
+      "是否添加默认 execute？",
+      "n"
+  )
+  if add_execute_choice.lower() in ['y', 'yes', '是', '1']:
+    default_execute_name = get_user_input(
+        "请输入程序名称",
+        validator=lambda x: validate_project_name(x)
+    )
+
   # 创建步骤执行器
   executor = StepExecutor()
 
@@ -603,6 +858,8 @@ def main():
   executor.set_context('project_root', project_root)
   executor.set_context('project_name', project_name)
   executor.set_context('selected_components', selected_components)
+  executor.set_context('default_library_name', default_library_name)
+  executor.set_context('default_execute_name', default_execute_name)
 
   # 注册步骤
   executor.register_step(
@@ -655,6 +912,18 @@ def main():
       name="复制组件示例",
       func=step_copy_component_examples,
       description="复制组件示例文件到项目目录",
+  ).register_step(
+      name="创建默认 library",
+      func=step_create_default_library,
+      description="创建默认 library 文件（头文件和源文件）",
+  ).register_step(
+      name="创建默认 execute",
+      func=step_create_default_execute,
+      description="创建默认 execute 文件（main.cc）",
+  ).register_step(
+      name="替换 library 和 execute 占位符",
+      func=step_replace_library_execute_placeholders,
+      description="替换 CMakeLists.txt 中的 library 和 execute 占位符",
   )
 
   # 执行所有步骤

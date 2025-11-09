@@ -23,6 +23,10 @@ set(tab_game_INSTALL_CMAKEDIR "lib/cmake/${PACKAGE_NAME}" CACHE STRING "Installa
 set(tab_game_INSTALL_SHAREDIR "share/tab_game" CACHE STRING "Installation directory for root certificates")
 set(tab_game_BUILD_MSVC_MP_COUNT 0 CACHE STRING "The maximum number of processes for MSVC /MP option")
 
+# 定义项目根目录的 include 目录路径
+# 使用 CMAKE_CURRENT_SOURCE_DIR 而不是 CMAKE_SOURCE_DIR，因为项目可能作为 submodule 被导入
+set(tab_game_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
 # Options
 option(tab_game_BUILD_TESTS "Build tests" @BUILD_TESTS_DEFAULT@)
 option(tab_game_BUILD_CODEGEN "Build codegen" ON)
@@ -118,7 +122,9 @@ endif()
 
 # @grpc_example_placeholder@
 
-# @add_lib_placeholder@
+# @add_library_placeholder@
+
+# @add_execute_placeholder@
 
 if(tab_game_INSTALL AND tab_game_HAS_EXPORT_TARGETS)
   install(EXPORT tab_gameTargets

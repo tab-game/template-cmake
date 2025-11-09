@@ -1,0 +1,11 @@
+#include "@libname@/@libname@.h"
+#include <iostream>
+
+namespace tab {
+
+void @LibName@::Print() {
+  std::cout << "hello @libname@" << std::endl;
+}
+
+}  // namespace tab
+

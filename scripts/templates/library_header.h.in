@@ -1,0 +1,17 @@
+#ifndef @LIBNAME_UPPER@_H
+#define @LIBNAME_UPPER@_H
+
+namespace tab {
+
+class @LibName@ {
+public:
+  @LibName@() = default;
+  ~@LibName@() = default;
+
+  // 打印信息
+  void Print();
+};
+
+}  // namespace tab
+
+#endif  // @LIBNAME_UPPER@_H
