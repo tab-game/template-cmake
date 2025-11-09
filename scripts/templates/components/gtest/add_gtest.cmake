@@ -86,13 +86,13 @@ function(add_gtest)
   if(TARGET GTest::gtest AND TARGET GTest::gtest_main)
     target_link_libraries(${GTEST_TEST_NAME}
       PRIVATE
-        GTest::gtest
+        # GTest::gtest
         GTest::gtest_main
     )
   elseif(TARGET gtest AND TARGET gtest_main)
     target_link_libraries(${GTEST_TEST_NAME}
       PRIVATE
-        gtest
+        # gtest
         gtest_main
     )
   else()
@@ -113,5 +113,95 @@ function(add_gtest)
 
   # 添加基本的测试（作为备用）
   # add_test(NAME ${GTEST_TEST_NAME} COMMAND ${GTEST_TEST_NAME})
+
+endfunction()
+
+
+# add_gmock.cmake
+# 通用的 gmock 测试用例配置函数（包含 gtest 和 gmock）
+# 
+# 用法:
+#   add_gmock(
+#     TEST_NAME <测试可执行文件名称>
+#     SOURCES <源文件列表>
+#     [LIBRARIES <额外依赖的库列表>]
+#     [INCLUDE_DIRS <包含目录列表>]
+#   )
+#
+# 参数说明:
+#   TEST_NAME    - 必需，测试可执行文件的名称
+#   SOURCES      - 必需，测试源文件列表（可以是多个文件）
+#   LIBRARIES    - 可选，除 gtest/gmock 外额外依赖的库列表
+#   INCLUDE_DIRS - 可选，包含目录列表
+#
+# 示例 1: 基本用法（单个源文件）
+#   add_gmock(
+#     TEST_NAME mock_test
+#     SOURCES mock_test.cc
+#   )
+#
+# 示例 2: 多个源文件，多个库依赖
+#   add_gmock(
+#     TEST_NAME complex_mock_test
+#     SOURCES 
+#       test1.cc
+#       test2.cc
+#       mock_helper.cc
+#     LIBRARIES 
+#       lib1
+#       lib2
+#   )
+
+function(add_gmock)
+  # 参数解析
+  set(options "")
+  set(oneValueArgs TEST_NAME)
+  set(multiValueArgs SOURCES LIBRARIES INCLUDE_DIRS)
+  cmake_parse_arguments(GMOCK "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+
+  # 检查必需参数
+  if(NOT GMOCK_TEST_NAME)
+    message(FATAL_ERROR "add_gmock: TEST_NAME 参数是必需的")
+  endif()
+
+  if(NOT GMOCK_SOURCES)
+    message(FATAL_ERROR "add_gmock: SOURCES 参数是必需的")
+  endif()
+
+  # 检查 gtest 和 gmock 是否可用
+  if(NOT TARGET gmock_main AND NOT TARGET GMock::gmock_main AND NOT TARGET GMock::GMock)
+    message(FATAL_ERROR "add_gmock: gmock_main 未找到，请确保在主 CMakeLists.txt 中调用了 find_or_fetch_gtest()")
+  endif()
+
+  # 创建测试可执行文件
+  add_executable(${GMOCK_TEST_NAME}
+    ${GMOCK_SOURCES}
+  )
+
+  # 设置 C++ 标准
+  target_compile_features(${GMOCK_TEST_NAME} PRIVATE cxx_std_17)
+
+  # 链接额外依赖的库
+  if(GMOCK_LIBRARIES)
+    target_link_libraries(${GMOCK_TEST_NAME}
+      PRIVATE
+        ${GMOCK_LIBRARIES}
+    )
+  endif()
+
+  if(TARGET gmock_main)
+    # 使用非命名空间目标
+    message(STATUS "add_gmock: 使用 gmock_main 目标")
+    target_link_libraries(${GMOCK_TEST_NAME} PRIVATE gmock_main)
+  else()
+    message(FATAL_ERROR "add_gmock: 无法找到 gmock_main 目标")
+  endif()
+
+  # 注册测试
+  include(GoogleTest)
+  gtest_discover_tests(${GMOCK_TEST_NAME})
+
+  # 添加基本的测试（作为备用）
+  # add_test(NAME ${GMOCK_TEST_NAME} COMMAND ${GMOCK_TEST_NAME})
 
 endfunction()

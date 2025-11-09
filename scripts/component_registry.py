@@ -24,6 +24,15 @@ class Component:
     self.description = metadata.get('description', '')
     self.supports_example = metadata.get('supports_example', False)
     self.example_name = metadata.get('example_name', None)
+    # 支持多个示例
+    self.examples = metadata.get('examples', [])
+    # 为了向后兼容，如果没有 examples 但有 example_name，创建一个示例配置
+    if not self.examples and self.example_name:
+      self.examples = [{
+        'name': self.example_name,
+        'display_name': self.example_name,
+        'destination': 'examples'
+      }]
     self.category = metadata.get('category', 'other')
     self.component_dir = component_dir
     self.metadata = metadata
@@ -90,11 +99,27 @@ def load_component_config_template(component: Component, project_name: str) -> O
     return None
 
 
-def get_component_example_files(component: Component) -> List[Path]:
+def get_component_examples(component: Component) -> List[Dict[str, Any]]:
+  """获取组件的所有示例列表
+  
+  Args:
+    component: 组件对象
+    
+  Returns:
+    示例配置列表
+  """
+  if not component.supports_example:
+    return []
+  
+  return component.examples
+
+
+def get_component_example_files(component: Component, example_name: Optional[str] = None) -> List[Path]:
   """获取组件的示例文件列表
   
   Args:
     component: 组件对象
+    example_name: 示例名称，如果为 None 则返回所有示例文件
     
   Returns:
     示例文件路径列表
@@ -107,27 +132,50 @@ def get_component_example_files(component: Component) -> List[Path]:
     return []
   
   example_files = []
-  for file_path in example_dir.rglob('*'):
-    if file_path.is_file():
-      example_files.append(file_path)
+  
+  if example_name:
+    # 获取指定示例的文件
+    example_subdir = example_dir / example_name
+    if example_subdir.exists() and example_subdir.is_dir():
+      for file_path in example_subdir.rglob('*'):
+        if file_path.is_file():
+          example_files.append(file_path)
+  else:
+    # 获取所有示例文件（向后兼容）
+    for file_path in example_dir.rglob('*'):
+      if file_path.is_file():
+        example_files.append(file_path)
   
   return example_files
 
 
-def get_component_example_destination(component: Component, project_root: str) -> Optional[str]:
+def get_component_example_destination(component: Component, project_root: str, example_name: Optional[str] = None) -> Optional[str]:
   """获取组件示例的目标目录
   
   Args:
     component: 组件对象
     project_root: 项目根目录
+    example_name: 示例名称，如果为 None 则使用旧的 example_name（向后兼容）
     
   Returns:
     目标目录路径，如果不支持示例返回 None
   """
-  if not component.supports_example or not component.example_name:
+  if not component.supports_example:
     return None
   
-  return os.path.join(project_root, 'examples', component.name, component.example_name)
+  # 如果指定了示例名称，从 examples 配置中查找
+  if example_name:
+    for example in component.examples:
+      if example.get('name') == example_name:
+        destination = example.get('destination', 'examples')
+        return os.path.join(project_root, destination, example_name)
+    return None
+  
+  # 向后兼容：使用旧的 example_name
+  if component.example_name:
+    return os.path.join(project_root, 'examples', component.name, component.example_name)
+  
+  return None
 
 
 def get_component_cmake_files(component: Component) -> List[Path]:

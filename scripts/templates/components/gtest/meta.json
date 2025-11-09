@@ -2,6 +2,18 @@
   "name": "gtest",
   "display_name": "Google Test",
   "description": "Google Test 单元测试框架",
-  "supports_example": false,
+  "supports_example": true,
+  "examples": [
+    {
+      "name": "gtest_example",
+      "display_name": "GTest 示例",
+      "destination": "tests"
+    },
+    {
+      "name": "gmock_example",
+      "display_name": "GMock 示例",
+      "destination": "tests"
+    }
+  ],
   "category": "test_framework"
 }

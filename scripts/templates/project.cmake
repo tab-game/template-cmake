@@ -24,7 +24,7 @@ set(tab_game_INSTALL_SHAREDIR "share/tab_game" CACHE STRING "Installation direct
 set(tab_game_BUILD_MSVC_MP_COUNT 0 CACHE STRING "The maximum number of processes for MSVC /MP option")
 
 # Options
-option(tab_game_BUILD_TESTS "Build tests" OFF)
+option(tab_game_BUILD_TESTS "Build tests" @BUILD_TESTS_DEFAULT@)
 option(tab_game_BUILD_CODEGEN "Build codegen" ON)
 option(tab_game_DOWNLOAD_ARCHIVES "Download archives for empty 3rd party directories" ON)
 

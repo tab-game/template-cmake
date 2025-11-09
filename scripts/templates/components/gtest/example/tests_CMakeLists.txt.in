@@ -1,0 +1,16 @@
+# Tests CMakeLists.txt
+# 包含 gtest 示例子目录
+
+# 包含 add_gtest 函数
+include(add_gtest)
+
+# 添加 gtest_example 子目录（如果存在）
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/gtest_example/CMakeLists.txt)
+  add_subdirectory(gtest_example)
+endif()
+
+# 添加 gmock_example 子目录（如果存在）
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/gmock_example/CMakeLists.txt)
+  add_subdirectory(gmock_example)
+endif()
+

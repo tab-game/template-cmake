@@ -27,6 +27,7 @@ from component_registry import (
     get_component_example_files,
     get_component_example_destination,
     get_component_cmake_files,
+    get_component_examples,
     Component,
 )
 
@@ -151,7 +152,7 @@ def interactive_component_selection(components: list[Component]) -> Dict[str, An
     components: 可用组件列表
 
   Returns:
-    选择的组件信息字典，格式为 {component_name: {'selected': bool, 'include_example': bool}}
+    选择的组件信息字典，格式为 {component_name: {'selected': bool, 'include_examples': [example_name1, ...]}}
   """
   if not components:
     return {}
@@ -178,17 +179,33 @@ def interactive_component_selection(components: list[Component]) -> Dict[str, An
     for idx in indices:
       if 1 <= idx <= len(components):
         component = components[idx - 1]
-        selected_components[component.name] = {'selected': True, 'include_example': False}
+        selected_components[component.name] = {'selected': True, 'include_examples': []}
         
         # 如果组件支持示例，询问是否添加示例
         if component.supports_example:
-          example_choice = get_user_input(
-              f"是否添加 {component.display_name} 的示例 ({component.example_name})？",
-              "n"
-          )
-          selected_components[component.name]['include_example'] = (
-              example_choice.lower() in ['y', 'yes', '是', '1']
-          )
+          examples = get_component_examples(component)
+          
+          if examples:
+            # 有多个示例，逐个询问
+            for example in examples:
+              example_display_name = example.get('display_name', example.get('name', ''))
+              example_choice = get_user_input(
+                  f"是否添加 {component.display_name} 的 {example_display_name}？",
+                  "n"
+              )
+              if example_choice.lower() in ['y', 'yes', '是', '1']:
+                selected_components[component.name]['include_examples'].append(example.get('name'))
+          else:
+            # 向后兼容：使用旧的 example_name
+            if component.example_name:
+              example_choice = get_user_input(
+                  f"是否添加 {component.display_name} 的示例 ({component.example_name})？",
+                  "n"
+              )
+              if example_choice.lower() in ['y', 'yes', '是', '1']:
+                selected_components[component.name]['include_examples'].append(component.example_name)
+                # 为了向后兼容，也设置 include_example
+                selected_components[component.name]['include_example'] = True
   except ValueError:
     print("警告: 输入格式无效，跳过组件选择")
   
@@ -278,29 +295,47 @@ def step_replace_component_placeholders(context: Dict[str, Any]) -> bool:
   
   # 替换 grpc 示例占位符
   grpc_example_code = ''
-  if 'grpc' in selected_components and selected_components['grpc'].get('include_example', False):
-    # 从组件注册表中获取真正的组件对象
-    script_dir = Path(__file__).parent
-    components_dir = script_dir / 'templates' / 'components'
-    components = discover_components(components_dir)
-    grpc_component = None
-    for comp in components:
-      if comp.name == 'grpc':
-        grpc_component = comp
-        break
+  if 'grpc' in selected_components:
+    grpc_info = selected_components['grpc']
+    # 支持新的 include_examples 和旧的 include_example
+    include_examples = grpc_info.get('include_examples', [])
+    if not include_examples and grpc_info.get('include_example', False):
+      include_examples = ['helloworld']  # grpc 的默认示例名称
     
-    if grpc_component:
-      example_dir = get_component_example_destination(grpc_component, project_root)
-      if example_dir:
-        example_path = os.path.join(example_dir, 'CMakeLists.txt')
-        example_path_relative = os.path.relpath(example_path, project_root).replace('\\', '/')
-        example_dir_relative = os.path.dirname(example_path_relative).replace('\\', '/')
-        grpc_example_code = f'\nif(EXISTS ${{CMAKE_CURRENT_SOURCE_DIR}}/{example_path_relative})\n'
-        grpc_example_code += f'  set({project_name}_EXAMPLES_DIR ${{CMAKE_CURRENT_SOURCE_DIR}}/{example_dir_relative})\n'
-        grpc_example_code += f'  add_subdirectory(${{{project_name}_EXAMPLES_DIR}})\n'
-        grpc_example_code += 'endif()\n'
+    if include_examples:
+      # 从组件注册表中获取真正的组件对象
+      script_dir = Path(__file__).parent
+      components_dir = script_dir / 'templates' / 'components'
+      components = discover_components(components_dir)
+      grpc_component = None
+      for comp in components:
+        if comp.name == 'grpc':
+          grpc_component = comp
+          break
+      
+      if grpc_component:
+        # 使用第一个示例（grpc 通常只有一个示例）
+        example_name = include_examples[0] if include_examples else None
+        if example_name:
+          example_dir = get_component_example_destination(grpc_component, project_root, example_name)
+          if example_dir:
+            example_path = os.path.join(example_dir, 'CMakeLists.txt')
+            example_path_relative = os.path.relpath(example_path, project_root).replace('\\', '/')
+            example_dir_relative = os.path.dirname(example_path_relative).replace('\\', '/')
+            grpc_example_code = f'\nif(EXISTS ${{CMAKE_CURRENT_SOURCE_DIR}}/{example_path_relative})\n'
+            grpc_example_code += f'  set({project_name}_EXAMPLES_DIR ${{CMAKE_CURRENT_SOURCE_DIR}}/{example_dir_relative})\n'
+            grpc_example_code += f'  add_subdirectory(${{{project_name}_EXAMPLES_DIR}})\n'
+            grpc_example_code += 'endif()\n'
   
   content = content.replace('# @grpc_example_placeholder@', grpc_example_code)
+  
+  # 替换 BUILD_TESTS 默认值占位符
+  # 如果选择了 gtest 组件，默认值为 ON，否则为 OFF
+  if 'gtest' in selected_components:
+    build_tests_default = 'ON'
+  else:
+    build_tests_default = 'OFF'
+  content = content.replace('@BUILD_TESTS_DEFAULT@', build_tests_default)
   
   # 写回文件
   with open(cmake_lists_file, 'w', encoding='utf-8') as f:
@@ -382,38 +417,100 @@ def step_copy_component_examples(context: Dict[str, Any]) -> bool:
   components = discover_components(components_dir)
   component_map = {comp.name: comp for comp in components}
   
+  # 跟踪复制到 tests 目录的示例
+  tests_examples = set()
+  
   for component_name, component_info in selected_components.items():
-    if not component_info.get('include_example', False):
-      continue
-    
     if component_name not in component_map:
       continue
     
     component = component_map[component_name]
     
-    # 获取示例文件
-    example_files = get_component_example_files(component)
-    if not example_files:
+    # 获取要包含的示例列表
+    include_examples = component_info.get('include_examples', [])
+    
+    # 向后兼容：如果没有 include_examples 但有 include_example，使用旧的逻辑
+    if not include_examples and component_info.get('include_example', False):
+      include_examples = [component.example_name] if component.example_name else []
+    
+    if not include_examples:
       continue
     
-    # 获取目标目录
-    dest_dir = get_component_example_destination(component, project_root)
-    if not dest_dir:
-      continue
+    # 复制每个选中的示例
+    for example_name in include_examples:
+      # 获取示例文件
+      example_files = get_component_example_files(component, example_name)
+      if not example_files:
+        continue
+      
+      # 获取目标目录
+      dest_dir = get_component_example_destination(component, project_root, example_name)
+      if not dest_dir:
+        continue
+      
+      # 检查是否复制到 tests 目录
+      dest_path = Path(dest_dir)
+      # 检查路径中是否包含 tests 目录（目标目录应该是 tests/example_name）
+      if 'tests' in dest_path.parts:
+        tests_examples.add(example_name)
+      
+      # 复制示例文件
+      for src_file in example_files:
+        # 计算相对路径（相对于示例子目录）
+        example_subdir = component.component_dir / 'example' / example_name
+        relative_path = src_file.relative_to(example_subdir)
+        dest_file = dest_path / relative_path
+        
+        # 确保目标目录存在
+        dest_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # 复制文件
+        import shutil
+        shutil.copy2(src_file, dest_file)
+        print(f"已复制示例文件: {src_file.name} -> {dest_file}")
+  
+  # 如果有示例复制到 tests 目录，创建或更新 tests/CMakeLists.txt
+  if tests_examples:
+    tests_dir = Path(project_root) / 'tests'
+    tests_cmake = tests_dir / 'CMakeLists.txt'
     
-    # 复制示例文件
-    for src_file in example_files:
-      # 计算相对路径
-      relative_path = src_file.relative_to(component.component_dir / 'example')
-      dest_file = Path(dest_dir) / relative_path
+    # 检查是否有 gtest 组件的示例模板
+    if 'gtest' in component_map:
+      gtest_component = component_map['gtest']
+      template_file = gtest_component.component_dir / 'example' / 'tests_CMakeLists.txt.in'
       
-      # 确保目标目录存在
-      dest_file.parent.mkdir(parents=True, exist_ok=True)
-      
-      # 复制文件
-      import shutil
-      shutil.copy2(src_file, dest_file)
-      print(f"已复制示例文件: {src_file.name} -> {dest_file}")
+      if template_file.exists():
+        # 读取模板内容
+        template_content = template_file.read_text(encoding='utf-8')
+        
+        # 如果 tests/CMakeLists.txt 不存在，创建它
+        if not tests_cmake.exists():
+          tests_cmake.write_text(template_content, encoding='utf-8')
+          print(f"已创建 tests/CMakeLists.txt")
+        else:
+          # 如果已存在，检查是否需要更新
+          existing_content = tests_cmake.read_text(encoding='utf-8')
+          
+          # 检查是否已经包含了所有示例
+          needs_update = False
+          for example_name in tests_examples:
+            if f'add_subdirectory({example_name})' not in existing_content:
+              needs_update = True
+              break
+          
+          # 如果需要更新，合并内容
+          if needs_update:
+            # 简单合并：如果模板中有但现有文件中没有的示例，添加它
+            for example_name in tests_examples:
+              if f'add_subdirectory({example_name})' not in existing_content:
+                # 在文件末尾添加
+                existing_content += f'\n# 添加 {example_name} 子目录（如果存在）\n'
+                existing_content += f'if(EXISTS ${{CMAKE_CURRENT_SOURCE_DIR}}/{example_name}/CMakeLists.txt)\n'
+                existing_content += f'  add_subdirectory({example_name})\n'
+                existing_content += 'endif()\n'
+            
+            tests_cmake.write_text(existing_content, encoding='utf-8')
+            print(f"已更新 tests/CMakeLists.txt")
   
   return True
 
