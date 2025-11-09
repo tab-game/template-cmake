@@ -112,30 +112,15 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/CMakeLists.txt)
   add_subdirectory(${tab_game_SRC_DIR})
 endif()
 
-# 启用测试（必须在 add_subdirectory 之前调用）
-if(tab_game_BUILD_TESTS AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt)
-  enable_testing()
-  # 使用 gtest 库（支持三种获取方式）
-  # 方式1: 如果 third_party/gtest 目录存在且有 CMakeLists.txt，则使用 add_subdirectory
-  # 方式2: 尝试通过 find_package 查找已安装的 gtest
-  # 方式3: 使用 FetchContent 下载 gtest 到 CMAKE_BINARY_DIR
-  # 取消下面的注释以启用 gtest
-  include(find_gtest)
-  find_or_fetch_gtest()
-  # 或者指定版本和仓库：
-  # find_or_fetch_gtest(VERSION 1.14.0 GIT_TAG v1.14.0)
-  set(tab_game_TESTS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-  add_subdirectory(${tab_game_TESTS_DIR})
-endif()
+# @gtest_placeholder@
 
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/examples/CMakeLists.txt)
-  set(tab_game_EXAMPLES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/examples)
-  add_subdirectory(${tab_game_EXAMPLES_DIR})
-endif()
+# @grpc_placeholder@
+
+# @grpc_example_placeholder@
 
 # @add_lib_placeholder@
 
-if(tab_game_INSTALL)
+if(tab_game_INSTALL AND tab_game_HAS_EXPORT_TARGETS)
   install(EXPORT tab_gameTargets
     DESTINATION ${tab_game_INSTALL_CMAKEDIR}
     NAMESPACE tab::

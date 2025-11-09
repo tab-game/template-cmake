@@ -1,0 +1,8 @@
+{
+  "name": "grpc",
+  "display_name": "gRPC",
+  "description": "gRPC 远程过程调用框架",
+  "supports_example": true,
+  "example_name": "helloworld",
+  "category": "rpc_framework"
+}

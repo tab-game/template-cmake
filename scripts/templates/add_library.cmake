@@ -48,4 +48,6 @@ if(tab_game_INSTALL)
     LIBRARY DESTINATION ${tab_game_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${tab_game_INSTALL_LIBDIR}
   )
+  # 标记有目标被导出
+  set(tab_game_HAS_EXPORT_TARGETS ON CACHE INTERNAL "Whether any targets are exported")
 endif()

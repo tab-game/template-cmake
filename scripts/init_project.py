@@ -21,6 +21,13 @@ from utils import (
     get_user_input,
 )
 from step_executor import StepExecutor
+from component_registry import (
+    discover_components,
+    load_component_config_template,
+    get_component_example_files,
+    get_component_example_destination,
+    Component,
+)
 
 
 def step_copy_project_cmake(context: Dict[str, Any]) -> bool:
@@ -136,6 +143,229 @@ def step_replace_in_template_config(context: Dict[str, Any]) -> bool:
   return replace_in_file(config_file, 'tab_game', project_name)
 
 
+def interactive_component_selection(components: list[Component]) -> Dict[str, Any]:
+  """交互式组件选择
+
+  Args:
+    components: 可用组件列表
+
+  Returns:
+    选择的组件信息字典，格式为 {component_name: {'selected': bool, 'include_example': bool}}
+  """
+  if not components:
+    return {}
+  
+  print("\n" + "=" * 50)
+  print("组件选择")
+  print("=" * 50)
+  print("\n可用组件：")
+  
+  for i, component in enumerate(components, 1):
+    example_info = "（支持示例）" if component.supports_example else ""
+    print(f"  {i}. {component.display_name} - {component.description} {example_info}")
+  
+  print("\n请输入要添加的组件编号（多个用逗号分隔，直接回车跳过）：")
+  user_input = input().strip()
+  
+  selected_components = {}
+  
+  if not user_input:
+    return selected_components
+  
+  try:
+    indices = [int(x.strip()) for x in user_input.split(',')]
+    for idx in indices:
+      if 1 <= idx <= len(components):
+        component = components[idx - 1]
+        selected_components[component.name] = {'selected': True, 'include_example': False}
+        
+        # 如果组件支持示例，询问是否添加示例
+        if component.supports_example:
+          example_choice = get_user_input(
+              f"是否添加 {component.display_name} 的示例 ({component.example_name})？",
+              "n"
+          )
+          selected_components[component.name]['include_example'] = (
+              example_choice.lower() in ['y', 'yes', '是', '1']
+          )
+  except ValueError:
+    print("警告: 输入格式无效，跳过组件选择")
+  
+  return selected_components
+
+
+def step_process_components(context: Dict[str, Any]) -> bool:
+  """步骤：处理组件配置代码生成
+
+  Args:
+    context: 执行上下文
+
+  Returns:
+    成功返回 True，失败返回 False
+  """
+  script_dir = Path(__file__).parent
+  components_dir = script_dir / 'templates' / 'components'
+  project_name = context.get('project_name')
+  selected_components = context.get('selected_components', {})
+  
+  if not selected_components:
+    return True
+  
+  # 生成组件配置代码
+  component_configs = {}
+  
+  for component_name, component_info in selected_components.items():
+    if not component_info.get('selected', False):
+      continue
+    
+    # 发现组件
+    components = discover_components(components_dir)
+    component = None
+    for comp in components:
+      if comp.name == component_name:
+        component = comp
+        break
+    
+    if not component:
+      print(f"警告: 未找到组件 {component_name}")
+      continue
+    
+    # 加载配置模板
+    config_code = load_component_config_template(component, project_name)
+    if config_code:
+      component_configs[component_name] = config_code
+  
+  context['component_configs'] = component_configs
+  return True
+
+
+def step_replace_component_placeholders(context: Dict[str, Any]) -> bool:
+  """步骤：替换组件占位符
+
+  Args:
+    context: 执行上下文
+
+  Returns:
+    成功返回 True，失败返回 False
+  """
+  project_root = context.get('project_root')
+  project_name = context.get('project_name')
+  component_configs = context.get('component_configs', {})
+  selected_components = context.get('selected_components', {})
+  
+  cmake_lists_file = os.path.join(project_root, 'CMakeLists.txt')
+  
+  if not os.path.exists(cmake_lists_file):
+    print(f"错误: CMakeLists.txt 不存在: {cmake_lists_file}")
+    return False
+  
+  # 读取文件内容
+  with open(cmake_lists_file, 'r', encoding='utf-8') as f:
+    content = f.read()
+  
+  # 替换 gtest 占位符
+  if 'gtest' in component_configs:
+    content = content.replace('# @gtest_placeholder@', component_configs['gtest'])
+  else:
+    content = content.replace('# @gtest_placeholder@', '')
+  
+  # 替换 grpc 占位符
+  if 'grpc' in component_configs:
+    content = content.replace('# @grpc_placeholder@', component_configs['grpc'])
+  else:
+    content = content.replace('# @grpc_placeholder@', '')
+  
+  # 替换 grpc 示例占位符
+  grpc_example_code = ''
+  if 'grpc' in selected_components and selected_components['grpc'].get('include_example', False):
+    # 从组件注册表中获取真正的组件对象
+    script_dir = Path(__file__).parent
+    components_dir = script_dir / 'templates' / 'components'
+    components = discover_components(components_dir)
+    grpc_component = None
+    for comp in components:
+      if comp.name == 'grpc':
+        grpc_component = comp
+        break
+    
+    if grpc_component:
+      example_dir = get_component_example_destination(grpc_component, project_root)
+      if example_dir:
+        example_path = os.path.join(example_dir, 'CMakeLists.txt')
+        example_path_relative = os.path.relpath(example_path, project_root).replace('\\', '/')
+        example_dir_relative = os.path.dirname(example_path_relative).replace('\\', '/')
+        grpc_example_code = f'\nif(EXISTS ${{CMAKE_CURRENT_SOURCE_DIR}}/{example_path_relative})\n'
+        grpc_example_code += f'  set({project_name}_EXAMPLES_DIR ${{CMAKE_CURRENT_SOURCE_DIR}}/{example_dir_relative})\n'
+        grpc_example_code += f'  add_subdirectory(${{{project_name}_EXAMPLES_DIR}})\n'
+        grpc_example_code += 'endif()\n'
+  
+  content = content.replace('# @grpc_example_placeholder@', grpc_example_code)
+  
+  # 写回文件
+  with open(cmake_lists_file, 'w', encoding='utf-8') as f:
+    f.write(content)
+  
+  print(f"已替换组件占位符: {cmake_lists_file}")
+  return True
+
+
+def step_copy_component_examples(context: Dict[str, Any]) -> bool:
+  """步骤：复制组件示例文件
+
+  Args:
+    context: 执行上下文
+
+  Returns:
+    成功返回 True，失败返回 False
+  """
+  script_dir = Path(__file__).parent
+  components_dir = script_dir / 'templates' / 'components'
+  project_root = context.get('project_root')
+  selected_components = context.get('selected_components', {})
+  
+  if not selected_components:
+    return True
+  
+  # 发现所有组件
+  components = discover_components(components_dir)
+  component_map = {comp.name: comp for comp in components}
+  
+  for component_name, component_info in selected_components.items():
+    if not component_info.get('include_example', False):
+      continue
+    
+    if component_name not in component_map:
+      continue
+    
+    component = component_map[component_name]
+    
+    # 获取示例文件
+    example_files = get_component_example_files(component)
+    if not example_files:
+      continue
+    
+    # 获取目标目录
+    dest_dir = get_component_example_destination(component, project_root)
+    if not dest_dir:
+      continue
+    
+    # 复制示例文件
+    for src_file in example_files:
+      # 计算相对路径
+      relative_path = src_file.relative_to(component.component_dir / 'example')
+      dest_file = Path(dest_dir) / relative_path
+      
+      # 确保目标目录存在
+      dest_file.parent.mkdir(parents=True, exist_ok=True)
+      
+      # 复制文件
+      import shutil
+      shutil.copy2(src_file, dest_file)
+      print(f"已复制示例文件: {src_file.name} -> {dest_file}")
+  
+  return True
+
+
 def validator_project_root(context: Dict[str, Any]) -> Tuple[bool, str]:
   """验证项目根目录
 
@@ -210,6 +440,11 @@ def main():
       validator=lambda x: validate_project_name(x)
   )
   print()
+  
+  # 组件选择
+  components_dir = script_dir / 'templates' / 'components'
+  available_components = discover_components(components_dir)
+  selected_components = interactive_component_selection(available_components)
 
   # 创建步骤执行器
   executor = StepExecutor()
@@ -218,6 +453,7 @@ def main():
   executor.set_context('templates_dir', templates_dir)
   executor.set_context('project_root', project_root)
   executor.set_context('project_name', project_name)
+  executor.set_context('selected_components', selected_components)
 
   # 注册步骤
   executor.register_step(
@@ -254,6 +490,18 @@ def main():
       name="替换 Config.cmake.in 中的工程名",
       func=step_replace_in_template_config,
       description="将 {工程名}Config.cmake.in 中的 tab_game 替换为工程名",
+  ).register_step(
+      name="处理组件配置",
+      func=step_process_components,
+      description="生成组件配置代码",
+  ).register_step(
+      name="替换组件占位符",
+      func=step_replace_component_placeholders,
+      description="替换 CMakeLists.txt 中的组件占位符",
+  ).register_step(
+      name="复制组件示例",
+      func=step_copy_component_examples,
+      description="复制组件示例文件到项目目录",
   )
 
   # 执行所有步骤

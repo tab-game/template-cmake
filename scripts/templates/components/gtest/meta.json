@@ -1,0 +1,7 @@
+{
+  "name": "gtest",
+  "display_name": "Google Test",
+  "description": "Google Test 单元测试框架",
+  "supports_example": false,
+  "category": "test_framework"
+}
